@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>地方</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin=""/>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
+
+    <style>
+        body {
+            font-family: sans-serif;
+            height: 100%;
+            margin: 0;
+        }
+        #map {
+            height: 100vh;
+            width: 100%;
+        }
+        .leaflet-popup-content-wrapper {
+            border-radius: 5px;
+        }
+        .leaflet-popup-content {
+            margin: 10px !important;
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+        }
+        .popup-visited {
+            color: #007bff; /* 蓝色文字 */
+            font-weight: bold;
+        }
+        .button-container {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000;
+            display: flex;
+            gap: 10px;
+        }
+        .toggle-button {
+            padding: 10px 15px;
+            background-color: rgba(255, 255, 255, 0.2); /* 白色半透明背景 */
+            backdrop-filter: blur(10px); /* 毛玻璃模糊效果 */
+            color: #333; /* 深色文字以确保可读性 */
+            border: 1px solid rgba(255, 255, 255, 0.3); /* 轻微边框增强层次感 */
+            border-radius: 8px; /* 圆角 */
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: background-color 0.3s ease; /* 过渡动画 */
+        }
+        .toggle-button:hover {
+            background-color: rgba(255, 255, 255, 0.4); /* 悬停时稍加深背景 */
+        }
+        .toggle-button.active {
+            background-color: rgba(255, 255, 255, 0.6); /* 选中状态更不透明 */
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="button-container">
+        <!-- 默认active市级 -->
+        <button class="toggle-button" data-layer="district">区县</button>
+        <button class="toggle-button active" data-layer="city">市级</button>
+        <button class="toggle-button" data-layer="province">省级</button>
+    </div>
+
+    <script>
+        // 初始化 Leaflet 地图 - 中心设在中国大致中心
+        const map = L.map('map').setView([36, 105], 4);
+
+        // 添加底图图层 (OpenStreetMap)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+            attribution: '© <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(map);
+        // 添加底图图层 (高德地图)
+        // L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+        //     subdomains: ['1', '2', '3', '4'],
+        //     maxZoom: 18,
+        //     attribution: '© 高德地图'
+        // }).addTo(map);
+
+        // 定义去过的区县列表
+        const visitedDistrictNames = [
+            // 浙江
+            "上城区","拱墅区","西湖区","滨江区","萧山区","余杭区","富阳区","钱塘区","临平区","淳安县","海曙区","鄞州区","鹿城区","龙湾区","瓯海区","洞头区","永嘉县","平阳县","苍南县","文成县","乐清市","龙港市","桐乡市","德清县","安吉县","诸暨市","婺城区","金东区","武义县","浦江县","义乌市","柯城区","衢江区","开化县","定海区","普陀区","椒江区","黄岩区","路桥区","天台县","仙居县","临海市","玉环市","莲都区","青田县","缙云县","遂昌县","松阳县","云和县","景宁畲族自治县","龙泉市",
+            // 福建
+            "福鼎市", "蕉城区", "仓山区", "鼓楼区", "台江区",
+            "晋安区", "鲤城区", "丰泽区", "思明区", "湖里区",
+            // 江西
+            "广丰区", "信州区", "青山湖区", "东湖区", "西湖区", "红谷滩区",
+            // 上海
+            "浦东新区", "黄浦区", "静安区", "徐汇区", "长宁区",
+            // 广州
+            "越秀区", "白云区", "荔湾区", "天河区", "海珠区",
+            // 深圳
+            "宝安区", "南山区", "福田区", "盐田区", "罗湖区",
+            // 成都
+            "青羊区", "成华区",
+            // 北京
+            "东城区", "西城区",
+            // 南京
+            "秦淮区", "玄武区",
+            // 三亚
+            "天涯区", "吉阳区", "海棠区"
+        ];
+
+        // 定义去过的市级列表
+        const visitedCityNames = [
+            // 浙江
+            "丽水市", "温州市", "金华市", "衢州市", "台州市", "宁波市", "杭州市", "绍兴市", "湖州市", "嘉兴市",
+            // 上海
+            "上海市",
+            // 江西
+            "上饶市", "南昌市",
+            // 四川
+            "成都市", "阿坝藏族羌族自治州",
+            // 江苏
+            "南京市", "苏州市",
+            // 湖北
+            "武汉市",
+            // 福建
+            "宁德市", "福州市", "泉州市", "厦门市",
+            // 广东
+            "广州市", "深圳市",
+            // 湖南
+            "长沙市",
+            // 贵州
+            "贵阳市",
+            // 海南
+            "三亚市",
+            // 北京
+            "北京市"
+        ];
+
+        // 定义去过的省级列表
+        const visitedProvinceNames = [
+            "浙江省", "福建省", "江苏省", "上海市", "四川省", "广东省", "湖北省", "江西省", "安徽省", "湖南省", "贵州省", "北京市"
+        ];
+
+        // 定义直辖市列表
+        const municipalityNames = ["上海市", "北京市", "天津市", "重庆市"];
+
+        // GeoJSON 数据源（本地路径）
+        const districtGeoJsonUrls = [
+            './data/wgs84_310000_full.json', // 上海
+            './data/wgs84_320000_full_district.json', // 江苏
+            './data/wgs84_330000_full_district.json', // 浙江
+            './data/wgs84_340000_full_district.json', // 安徽
+            './data/wgs84_350000_full_district.json', // 福建
+            './data/wgs84_360000_full_district.json', // 江西
+            './data/wgs84_440000_full_district.json', // 广东
+            './data/wgs84_230000_full_district.json', // 黑龙江
+            './data/wgs84_220000_full_district.json', // 吉林
+            './data/wgs84_210000_full_district.json', // 辽宁
+            './data/wgs84_110000_full.json', // 北京
+            './data/wgs84_120000_full.json', // 天津
+            './data/wgs84_130000_full_district.json', // 河北
+            './data/wgs84_140000_full_district.json', // 山西
+            './data/wgs84_150000_full_district.json', // 内蒙古
+            './data/wgs84_610000_full_district.json', // 陕西
+            './data/wgs84_620000_full_district.json', // 甘肃
+            './data/wgs84_630000_full_district.json', // 青海
+            './data/wgs84_640000_full_district.json', // 宁夏
+            './data/wgs84_650000_full_district.json', // 新疆
+            './data/wgs84_510000_full_district.json', // 四川
+            './data/wgs84_500000_full.json', // 重庆
+            './data/wgs84_520000_full_district.json', // 贵州
+            './data/wgs84_530000_full_district.json', // 云南
+            './data/wgs84_540000_full_district.json', // 西藏
+            './data/wgs84_410000_full_district.json', // 河南
+            './data/wgs84_420000_full_district.json', // 湖北
+            './data/wgs84_430000_full_district.json', // 湖南
+            './data/wgs84_450000_full_district.json', // 广西
+            './data/wgs84_460000_full_district.json' // 海南
+        ];
+
+        const chinaCityGeoJsonUrl = './data/wgs84_100000_full_city.json';
+        const chinaProvinceGeoJsonUrl = './data/wgs84_100000_full.json';
+        // 定义 GeoJSON 数据源 URL（全国区县）
+        // const districtGeoJsonUrls = [
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/310000_full.json', // 上海
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/320000_full_district.json', // 江苏
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/330000_full_district.json', // 浙江
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/340000_full_district.json', // 安徽
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/350000_full_district.json', // 福建
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/360000_full_district.json', // 江西
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/440000_full_district.json', // 广东
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/230000_full_district.json', // 黑龙江
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/220000_full_district.json', // 吉林
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/210000_full_district.json', // 辽宁
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/110000_full.json', // 北京
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/120000_full.json', // 天津
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/130000_full_district.json', // 河北
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/140000_full_district.json', // 山西
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/150000_full_district.json', // 内蒙古
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/610000_full_district.json', // 陕西
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/620000_full_district.json', // 甘肃
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/630000_full_district.json', // 青海
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/640000_full_district.json', // 宁夏
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/650000_full_district.json', // 新疆
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/510000_full_district.json', // 四川
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/500000_full.json', // 重庆
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/520000_full_district.json', // 贵州
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/530000_full_district.json', // 云南
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/540000_full_district.json', // 西藏
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/410000_full_district.json', // 河南
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/420000_full_district.json', // 湖北
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/430000_full_district.json', // 湖南
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/450000_full_district.json', // 广西
+        //     'https://geo.datav.aliyun.com/areas_v3/bound/460000_full_district.json' // 海南
+        // ];
+
+        // const chinaCityGeoJsonUrl = 'https://geo.datav.aliyun.com/areas_v3/bound/100000_full_city.json';
+        // const chinaProvinceGeoJsonUrl = 'https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json';
+        // 定义样式
+        const visitedStyle = {
+            fillColor: "#007bff",
+            fillOpacity: 0.2,
+            color: "#0056b3",
+            weight: 0.6,
+            opacity: 0.7
+        };
+
+        const highlightStyle = {
+            weight: 3,
+            color: '#ffc107',
+            fillOpacity: 0.6
+        };
+
+        let districtLayer, cityLayer, provinceLayer;
+        let currentMode = 'city'; // 默认显示标记
+
+        // 创建 GeoJSON 图层
+        function createGeoJsonLayer(data, visitedNames, layerType) {
+            return L.geoJSON(data, {
+                filter: function(feature) {
+                    return feature.properties && visitedNames.includes(feature.properties.name);
+                },
+                style: visitedStyle,
+                onEachFeature: function (feature, layer) {
+                    if (feature.properties && feature.properties.name) {
+                        let popupContent = `<h3>${feature.properties.name}${layerType === 'city' || layerType === 'province' ? '' : ''}</h3>`;
+                        popupContent += `<p class='popup-visited'>✔ 已标记</p>`;
+                        layer.bindPopup(popupContent);
+                    }
+                    layer.on({
+                        mouseover: function(e) {
+                            const layer = e.target;
+                            layer.setStyle(highlightStyle);
+                            if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
+                                layer.bringToFront();
+                            }
+                        },
+                        mouseout: function(e) {
+                            if (layerType === 'district' && districtLayer) {
+                                districtLayer.resetStyle(e.target);
+                            } else if (layerType === 'city' && cityLayer) {
+                                cityLayer.resetStyle(e.target);
+                            } else if (layerType === 'province' && provinceLayer) {
+                                provinceLayer.resetStyle(e.target);
+                            }
+                        },
+                        click: function(e) {
+                            map.fitBounds(e.target.getBounds());
+                        }
+                    });
+                }
+            });
+        }
+
+        // 切换显示模式
+        function switchLayer(mode) {
+            // 移除所有图层
+            if (districtLayer) map.removeLayer(districtLayer);
+            if (cityLayer) map.removeLayer(cityLayer);
+            if (provinceLayer) map.removeLayer(provinceLayer);
+
+            // 添加对应图层
+            if (mode === 'district' && districtLayer) {
+                districtLayer.addTo(map);
+            } else if (mode === 'city' && cityLayer) {
+                cityLayer.addTo(map);
+            } else if (mode === 'province' && provinceLayer) {
+                provinceLayer.addTo(map);
+            }
+
+            // 更新当前模式
+            currentMode = mode;
+
+            // 更新按钮样式
+            document.querySelectorAll('.toggle-button').forEach(button => {
+                button.classList.toggle('active', button.getAttribute('data-layer') === mode);
+            });
+        }
+
+        // 使用 Promise.all 获取所有 GeoJSON 数据
+        Promise.all([
+            ...districtGeoJsonUrls.map(url => 
+                fetch(url).then(response => {
+                    if (!response.ok) throw new Error(`区县 GeoJSON HTTP error! URL: ${url}, status: ${response.status}`);
+                    return response.json();
+                })
+            ),
+            fetch(chinaCityGeoJsonUrl).then(response => {
+                if (!response.ok) throw new Error(`中国市级 GeoJSON HTTP error! status: ${response.status}`);
+                return response.json();
+            }),
+            fetch(chinaProvinceGeoJsonUrl).then(response => {
+                if (!response.ok) throw new Error(`中国省级 GeoJSON HTTP error! status: ${response.status}`);
+                return response.json();
+            })
+        ])
+        .then(data => {
+            // 解构数据：前N个元素为区县数据，最后两个为市级和省级
+            const districtDataArrays = data.slice(0, -2); // 所有区县数据
+            const chinaCityData = data[data.length - 2]; // 市级数据
+            const chinaProvinceData = data[data.length - 1]; // 省级数据
+
+            console.log("成功获取全国区县 GeoJSON 数据:", districtDataArrays);
+            console.log("成功获取中国市级 GeoJSON 数据:", chinaCityData);
+            console.log("成功获取中国省级 GeoJSON 数据:", chinaProvinceData);
+
+            // 合并全国区县 GeoJSON 数据
+            const combinedDistrictFeatures = {
+                type: "FeatureCollection",
+                features: districtDataArrays.reduce((acc, data) => {
+                    return acc.concat(data.features || []);
+                }, [])
+            };
+
+            // 为市级图层合并数据：直辖市从省级GeoJSON，非直辖市从市级GeoJSON
+            const municipalityFeatures = {
+                type: "FeatureCollection",
+                features: chinaProvinceData.features.filter(feature => 
+                    feature.properties && municipalityNames.includes(feature.properties.name)
+                )
+            };
+            const nonMunicipalityFeatures = {
+                type: "FeatureCollection",
+                features: chinaCityData.features.filter(feature => 
+                    feature.properties && visitedCityNames.includes(feature.properties.name) && 
+                    !municipalityNames.includes(feature.properties.name)
+                )
+            };
+            const combinedCityFeatures = {
+                type: "FeatureCollection",
+                features: [
+                    ...municipalityFeatures.features,
+                    ...nonMunicipalityFeatures.features
+                ]
+            };
+
+            // 创建区县、市级和省级图层
+            districtLayer = createGeoJsonLayer(combinedDistrictFeatures, visitedDistrictNames, 'district');
+            cityLayer = createGeoJsonLayer(combinedCityFeatures, visitedCityNames, 'city');
+            provinceLayer = createGeoJsonLayer(chinaProvinceData, visitedProvinceNames, 'province');
+
+            // 默认添加省级图层
+            cityLayer.addTo(map);
+
+            // 添加按钮事件
+            document.querySelectorAll('.toggle-button').forEach(button => {
+                button.addEventListener('click', () => {
+                    const layer = button.getAttribute('data-layer');
+                    switchLayer(layer);
+                });
+            });
+
+            // 调试：检查添加到地图上的图层数量
+            const districtLayersAdded = districtLayer.getLayers();
+            const cityLayersAdded = cityLayer.getLayers();
+            const provinceLayersAdded = provinceLayer.getLayers();
+            console.log(`添加了 ${districtLayersAdded.length} 个去过的区县到地图上。`);
+            console.log(`添加了 ${cityLayersAdded.length} 个去过的市级到地图上。`);
+            console.log(`添加了 ${cityLayersAdded.length} 个去过的市级（包括直辖市）到地图上。`);
+            console.log(`添加了 ${provinceLayersAdded.length} 个去过的省级到地图上。`);
+            if (districtLayersAdded.length === 0) {
+                console.warn("没有找到与 'visitedDistrictNames' 列表匹配的区县。请检查名称是否与 GeoJSON 中的 'name' 属性完全一致。");
+            }
+            if (cityLayersAdded.length === 0) {
+                console.warn("没有找到与 'visitedCityNames' 列表匹配的市级。请检查名称是否与 GeoJSON 中的 'name' 属性完全一致。");
+            }
+            if (provinceLayersAdded.length === 0) {
+                console.warn("没有找到与 'visitedProvinceNames' 列表匹配的省级。请检查名称是否与 GeoJSON 中的 'name' 属性完全一致。");
+            }
+        })
+        .catch(error => {
+            console.error('无法加载或解析 GeoJSON 数据:', error);
+            const mapDiv = document.getElementById('map');
+            mapDiv.innerHTML = `<p style="color: red; text-align: center; padding-top: 50px;">加载地图数据失败，请检查网络连接或 GeoJSON URL。错误信息: ${error.message}</p>`;
+        });
+    </script>
+</body>
+</html>
